@@ -173,7 +173,7 @@ export async function initProject() {
   const hm = /^#card=([\w-]+)(?:&t=(\d+(?:\.\d+)?))?$/.exec(location.hash);
   if (hm) S.pendingCard = { cid: hm[1], t: hm[2] != null ? +hm[2] : null };
   history.replaceState(null, '', '?p=' + p.id);
-  document.title = p.name + ' — Board';
+  document.title = p.name + ' — Easy Board';
 }
 
 export async function load() {

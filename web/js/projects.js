@@ -15,7 +15,7 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>'
 
 function setName(name) {
   btn.firstElementChild.nextElementSibling.textContent = name;
-  document.title = name + ' — Board';
+  document.title = name + ' — Easy Board';
 }
 
 async function refresh() {

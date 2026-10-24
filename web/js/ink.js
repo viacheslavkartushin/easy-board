@@ -21,6 +21,8 @@ export function resize() {
   requestDraw();
 }
 
+export function reloadStrokes() { listDirty = true; requestDraw(); }
+
 export function requestDraw() {
   if (raf) return;
   raf = requestAnimationFrame(() => { raf = 0; draw(); });

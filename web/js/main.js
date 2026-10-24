@@ -4,7 +4,7 @@ import {
 } from './store.js';
 import { initProjectsUI } from './projects.js';
 import { I } from './icons.js';
-import { beginPen, beginErase, setAutoColor, requestDraw } from './ink.js';
+import { beginPen, beginErase, setAutoColor, requestDraw, reloadStrokes } from './ink.js';
 import {
   createCard, syncAll, setEditing, editing, EDITABLE, NOTE_COLORS, hitCard, cardsInRect, cardEl,
   bringToFront, contentBounds, rectOf, defaultSize, playEmbed, assetOk, safeHref, embedOk, labelOf,
@@ -756,7 +756,7 @@ async function init() {
   applyView();
   renderTop();
   setTool('select');
-  requestDraw();
+  reloadStrokes();
   window.addEventListener('beforeunload', (e) => { if (hasUnsaved()) { e.preventDefault(); e.returnValue = ''; } });
   window.__board = { S, fitAll, zoomAt, applyView, setTool, deleteIds, duplicate };
   document.body.classList.add('ready');

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Board</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f6df5'/%3E%3Cpath d='M6 16c3-8 5 4 8-4s3 2 4-1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/vendor/marked.umd.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+  <script src="/vendor/highlight.min.js"></script>
+</head>
+<body>
+  <div id="stage" class="tool-select">
+    <div id="world">
+      <div id="frames"></div>
+      <svg id="links" width="1" height="1"></svg>
+      <div id="cards"></div>
+    </div>
+    <canvas id="ink"></canvas>
+    <div id="marquee"></div>
+    <div id="brush"></div>
+  </div>
+  <div id="projbar" class="panel"></div>
+  <nav id="tools" class="panel"></nav>
+  <div id="urlbar" class="panel"></div>
+  <div id="props" class="panel"></div>
+  <div id="topright" class="panel"></div>
+  <div id="zoombar" class="panel"></div>
+  <div id="save" data-s="saved">Saved</div>
+  <div id="toast"></div>
+  <input type="file" id="filepick" multiple hidden>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

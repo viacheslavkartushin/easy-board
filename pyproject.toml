@@ -1,0 +1,12 @@
+[project]
+name = "board"
+version = "0.1.0"
+description = "Локальная бесконечная доска"
+requires-python = ">=3.10"
+dependencies = [
+    "faster-whisper>=1.1",
+    "av<19",  # PyAV 19 убрал metadata_errors, который ещё использует faster-whisper 1.2.x
+]
+
+[tool.uv]
+package = false

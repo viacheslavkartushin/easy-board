@@ -25,6 +25,7 @@ More options: `--device cpu` (transcribe on the CPU only), `--gc` (delete files 
 | Zoom | wheel (Ctrl+wheel always zooms; the mouse button in the corner switches the wheel to scrolling), `+` `-` `0`, `F` — fit everything |
 | Pen / eraser | P / E; color, size, opacity in the top panel. The eraser erases part of a stroke; "Whole stroke" removes a stroke entirely |
 | Note / text / Markdown / code | buttons on the left; double-click on empty space for free text |
+| Checklist | the checkmark button on the left: a card with items. Enter adds an item (splits at the cursor), Backspace at the start joins with the previous one, ⋮⋮ on the left reorders, pasting several lines makes several items (`- [x] text` is understood); the counter and the bar show progress, "Clear checked" removes the done ones. Included in search and in the Markdown export as `- [x]` |
 | Files | the "upload" button, drag and drop from the file manager, or Ctrl+V (screenshots and images from the clipboard, text) |
 | Editing | double-click a card or the pencil above it; Esc to exit. Available for notes, text, Markdown, code, audio, video |
 | Audio/video | in normal mode, play only plays the selected range. In edit mode drag the handles on the timeline or type a time; `⌖` takes the current position |

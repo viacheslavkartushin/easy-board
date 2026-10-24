@@ -27,7 +27,7 @@ function render() {
   const rows = S.projects.map((p) => {
     const cur = p.id === S.project.id;
     if (editing === p.id) {
-      return `<div class="prow edit ${cur ? 'cur' : ''}" data-id="${p.id}"><input data-r value="${esc(p.name)}" maxlength="80"><span class="pa"><button data-a="ok" title="Save">${I.check}</button></span></div>`;
+      return `<div class="prow edit ${cur ? 'cur' : ''}" data-id="${p.id}"><input data-r value="${esc(p.name)}" maxlength="80"><span class="pa"><button data-a="ok" title="Save">${I.ok}</button></span></div>`;
     }
     if (confirming === p.id) {
       return `<div class="prow edit" data-id="${p.id}"><span class="pn">Delete “${esc(p.name)}”?</span><span class="pa"><button class="yes" data-a="yes">Delete</button><button data-a="no">Cancel</button></span></div>`;

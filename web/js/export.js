@@ -1,5 +1,5 @@
 import { S, bus, $, toast } from './store.js';
-import { labelOf, rectOf, contentBounds } from './cards.js';
+import { labelOf, rectOf, contentBounds, checkMd } from './cards.js';
 import { tc } from './transcript.js';
 
 const menu = document.createElement('div');
@@ -16,6 +16,7 @@ function cardMd(it, assets) {
   const name = it.name || labelOf(it);
   switch (it.type) {
     case 'note': case 'md': out.push(it.text || ''); break;
+    case 'check': out.push(checkMd(it)); break;
     case 'text': out.push(it.text || ''); break;
     case 'code': out.push('```' + (it.lang && it.lang !== 'auto' ? it.lang : '') + '\n' + (it.text || '') + '\n```'); break;
     case 'image': {

@@ -10,17 +10,18 @@ const els = new Map();
 export const editing = new Set();
 
 export const EDITABLE = new Set(['note', 'text', 'md', 'code', 'audio', 'video']);
-const FIT = new Set(['text', 'image', 'audio', 'video', 'file', 'link', 'ref', 'embed']);
+const FIT = new Set(['check', 'text', 'image', 'audio', 'video', 'file', 'link', 'ref', 'embed']);
 const isFit = (it) => FIT.has(it.type) && !(it.type === 'embed' && it.h);
 export const NOTE_COLORS = ['#fff2a8', '#ffd8a8', '#ffc9c9', '#fcc2d7', '#b2f2bb', '#a5d8ff', '#d0bfff', '#e9ecef'];
 const NAMES = {
-  note: 'Note', text: 'Text', md: 'Markdown', code: 'Code', image: 'Image',
+  note: 'Note', check: 'Checklist', text: 'Text', md: 'Markdown', code: 'Code', image: 'Image',
   pdf: 'PDF', audio: 'Audio', video: 'Video', file: 'File', link: 'Page', embed: 'Player', ref: 'Card link', frame: 'Frame',
 };
 export const FRAME_COLORS = ['#4f6df5', '#e8590c', '#2f9e44', '#c2255c', '#7048e8', '#0c8599', '#f59f00', '#868e96'];
 export const ACCENTS = ['', '#e03131', '#f76707', '#f59f00', '#2f9e44', '#0c8599', '#1971c2', '#7048e8', '#c2255c'];
 const DEFAULTS = {
   note: { w: 230, h: 190, color: NOTE_COLORS[0], text: '' },
+  check: { w: 300, title: '', items: [] },
   text: { w: 300, color: 'auto', fs: 28, text: '' },
   md: { w: 400, h: 320, text: '' },
   code: { w: 460, h: 260, lang: 'auto', text: '' },
@@ -53,6 +54,7 @@ export function labelOf(it) {
   const first = (t) => ((t || '').split('\n').map((l) => l.replace(/^[#>\-*\s]+/, '').trim()).find(Boolean) || '').slice(0, 70);
   switch (it.type) {
     case 'note': case 'text': case 'md': case 'code': return first(it.text) || NAMES[it.type];
+    case 'check': return it.title || first((it.items || [])[0]?.t) || NAMES.check;
     case 'link': return it.title || hostOf(it.href) || NAMES.link;
     case 'embed': return it.title || it.provider || NAMES.embed;
     case 'ref': return it.label || NAMES.ref;
@@ -245,6 +247,197 @@ function textual(item, body) {
   };
 }
 
+export function checkMd(it) {
+  const items = (Array.isArray(it.items) ? it.items : []).filter((x) => x && typeof x.t === 'string');
+  return (it.title ? '### ' + it.title + '\n\n' : '') + items.map((x) => `- [${x.d ? 'x' : ' '}] ${x.t}`).join('\n');
+}
+
+export function focusCheck(id) {
+  const go = () => els.get(id)?.el.querySelector('.ck-row textarea');
+  const ta = go();
+  if (ta) ta.focus(); else setTimeout(() => go()?.focus(), 30);
+}
+
+function checkBody(item, body) {
+  body.innerHTML = `<div class="ck"><div class="ck-head"><input class="ck-title" data-nodrag placeholder="Checklist" maxlength="120" spellcheck="false"><button class="ck-clear" data-nodrag></button><span class="ck-n"></span></div>
+    <div class="ck-bar"><i></i></div><div class="ck-list"></div>
+    <div class="ck-add"><span class="ck-plus">+</span><input data-nodrag placeholder="Add an item" spellcheck="false"></div></div>`;
+  const q = (s) => body.querySelector(s);
+  const title = q('.ck-title'), cnt = q('.ck-n'), barBox = q('.ck-bar'), bar = q('.ck-bar i'), list = q('.ck-list'), addIn = q('.ck-add input'), clear = q('.ck-clear');
+  const rows = new Map();
+  let focusReq = null;
+  const model = () => S.items.get(item.id);
+  const grow = (ta) => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+  const edit = (fn) => { const it = model(); if (!it) return; mark(item.id); fn(it); commit(); touch([item.id]); };
+  const newItem = (t = '', d = false) => ({ id: uid(), t, d });
+  const idxOf = (it, id) => it.items.findIndex((x) => x.id === id);
+
+  function makeRow(id) {
+    const row = document.createElement('div');
+    row.className = 'ck-row';
+    row.dataset.id = id;
+    row.innerHTML = '<span class="ck-h" data-nodrag title="Drag to reorder">⋮⋮</span><input type="checkbox" data-nodrag><textarea rows="1" data-nodrag spellcheck="false"></textarea><button class="ck-x" data-nodrag title="Delete the item">✕</button>';
+    return row;
+  }
+
+  title.addEventListener('focus', () => mark(item.id));
+  title.addEventListener('input', () => { const it = model(); if (it) { it.title = title.value; dirty(); } });
+  title.addEventListener('blur', () => commit());
+  title.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); focusCheck(item.id); } else if (e.key === 'Escape') title.blur();
+  });
+
+  list.addEventListener('focusin', (e) => { if (e.target.tagName === 'TEXTAREA') mark(item.id); });
+  list.addEventListener('focusout', (e) => { if (e.target.tagName === 'TEXTAREA') commit(); });
+  list.addEventListener('input', (e) => {
+    const ta = e.target;
+    if (ta.tagName !== 'TEXTAREA') return;
+    const x = model()?.items.find((y) => y.id === ta.closest('.ck-row').dataset.id);
+    if (!x) return;
+    x.t = ta.value.replace(/\n/g, ' ');
+    grow(ta);
+    dirty();
+    bus.emit('cardsize', item.id);
+  });
+  list.addEventListener('change', (e) => {
+    if (e.target.type !== 'checkbox') return;
+    const id = e.target.closest('.ck-row').dataset.id;
+    edit((it) => { const x = it.items.find((y) => y.id === id); if (x) x.d = e.target.checked; });
+  });
+  list.addEventListener('click', (e) => {
+    if (!e.target.closest('.ck-x')) return;
+    const id = e.target.closest('.ck-row').dataset.id;
+    edit((it) => { it.items = it.items.filter((x) => x.id !== id); });
+  });
+  list.addEventListener('keydown', (e) => {
+    const ta = e.target;
+    if (ta.tagName !== 'TEXTAREA') return;
+    e.stopPropagation();
+    const id = ta.closest('.ck-row').dataset.id;
+    const at = ta.selectionStart, end = ta.selectionEnd;
+    if (e.key === 'Escape') { ta.blur(); return; }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      const nx = newItem(ta.value.slice(end));
+      edit((it) => { const i = idxOf(it, id); if (i < 0) return; it.items[i].t = ta.value.slice(0, at); it.items.splice(i + 1, 0, nx); });
+      focusReq = { id: nx.id, pos: 0 };
+      sync([item.id]);
+    } else if (e.key === 'Backspace' && at === 0 && end === 0) {
+      const it = model(), i = it ? idxOf(it, id) : -1;
+      if (i > 0) {
+        e.preventDefault();
+        const prev = it.items[i - 1];
+        focusReq = { id: prev.id, pos: prev.t.length };
+        edit((m) => { const k = idxOf(m, id); m.items[k - 1].t += m.items[k].t; m.items.splice(k, 1); });
+      }
+    } else if ((e.key === 'ArrowUp' && at === 0) || (e.key === 'ArrowDown' && end === ta.value.length)) {
+      const row = ta.closest('.ck-row'), sib = e.key === 'ArrowUp' ? row.previousElementSibling : row.nextElementSibling;
+      if (sib) { e.preventDefault(); const t2 = sib.querySelector('textarea'); t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); addIn.focus(); }
+    }
+  });
+  list.addEventListener('paste', (e) => {
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (!/\n/.test(text.trim())) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = e.target.closest('.ck-row')?.dataset.id;
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+      const m = /^(?:[-*+]\s+)?(?:\[([ xX])\]\s+)?(.*)$/.exec(l);
+      return newItem(m[2], m[1] === 'x' || m[1] === 'X');
+    });
+    edit((it) => { const i = idxOf(it, id); it.items.splice(i < 0 ? it.items.length : i + 1, 0, ...lines); });
+  });
+
+  const addNow = () => {
+    const t = addIn.value.trim();
+    if (!t) return;
+    addIn.value = '';
+    edit((it) => { it.items.push(newItem(t)); });
+  };
+  addIn.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addNow(); } else if (e.key === 'Escape') addIn.blur();
+    else if (e.key === 'ArrowUp' && addIn.selectionStart === 0) { const l = list.lastElementChild?.querySelector('textarea'); if (l) { e.preventDefault(); l.focus(); } }
+  });
+  addIn.addEventListener('blur', addNow);
+  q('.ck-add').addEventListener('click', (e) => { if (e.target !== addIn) addIn.focus(); });
+  clear.addEventListener('click', () => edit((it) => { it.items = it.items.filter((x) => !x.d); }));
+
+  // Reorder by dragging the handle; the model is updated once, on release
+  list.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest('.ck-h');
+    if (!h || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const row = h.closest('.ck-row');
+    row.classList.add('drag');
+    const move = (ev) => {
+      let before = null;
+      for (const r of list.children) {
+        if (r === row) continue;
+        const b = r.getBoundingClientRect();
+        if (ev.clientY < b.top + b.height / 2) { before = r; break; }
+      }
+      if (before !== row.nextElementSibling) list.insertBefore(row, before);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      row.classList.remove('drag');
+      const order = [...list.children].map((r) => r.dataset.id);
+      edit((it) => { const by = new Map(it.items.map((x) => [x.id, x])); it.items = order.map((id) => by.get(id)).filter(Boolean); });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  });
+
+  let lastW = 0;
+  const wro = new ResizeObserver(() => { if (list.clientWidth !== lastW) { lastW = list.clientWidth; for (const r of rows.values()) grow(r.querySelector('textarea')); } });
+  wro.observe(list);
+
+  return {
+    destroy() { wro.disconnect(); },
+    render(it) {
+      if (!Array.isArray(it.items)) it.items = [];
+      for (const x of it.items) if (!x.id) x.id = uid();
+      if (document.activeElement !== title && title.value !== (it.title || '')) title.value = it.title || '';
+      const seen = new Set();
+      let prev = null;
+      for (const x of it.items) {
+        let row = rows.get(x.id);
+        if (!row) { row = makeRow(x.id); rows.set(x.id, row); }
+        seen.add(x.id);
+        const want = prev ? prev.nextSibling : list.firstChild;
+        if (row !== want) list.insertBefore(row, want);
+        prev = row;
+        const cb = row.querySelector('input'), ta = row.querySelector('textarea');
+        const text = String(x.t ?? '');
+        if (cb.checked !== !!x.d) cb.checked = !!x.d;
+        row.classList.toggle('done', !!x.d);
+        if (ta.value !== text) ta.value = text;
+        grow(ta);
+      }
+      for (const [id, row] of rows) if (!seen.has(id)) { row.remove(); rows.delete(id); }
+      const total = it.items.length, done = it.items.filter((x) => x.d).length;
+      cnt.textContent = total ? `${done}/${total}` : '';
+      bar.style.width = total ? (done / total) * 100 + '%' : '0';
+      body.classList.toggle('all-done', total > 0 && done === total);
+      barBox.style.display = total ? '' : 'none';
+      clear.style.display = done ? 'inline-block' : 'none';
+      clear.textContent = `Clear ${done} checked`;
+      if (focusReq) {
+        const ta = rows.get(focusReq.id)?.querySelector('textarea');
+        if (ta) { ta.focus(); ta.setSelectionRange(focusReq.pos, focusReq.pos); }
+        focusReq = null;
+      }
+    },
+  };
+}
+
 function simple(item, body) {
   if (item.type === 'image') {
     body.innerHTML = '<img draggable="false" alt="">';
@@ -416,7 +609,8 @@ function build(item) {
     const m = createMedia(item.type, item);
     body.appendChild(m.root);
     r = { render: (it, e) => m.render(it, e), destroy: m.destroy };
-  } else if (item.type === 'link') r = linkBody(item, body);
+  } else if (item.type === 'check') r = checkBody(item, body);
+  else if (item.type === 'link') r = linkBody(item, body);
   else if (item.type === 'embed') r = embedBody(item, body);
   else if (item.type === 'ref') r = refBody(item, body);
   else if (item.type === 'frame') r = frameBody(item, body);

@@ -45,7 +45,7 @@ export function runSearch(raw) {
     const tags = it.tags || [];
     if (!tagToks.every((t) => tags.some((x) => x.includes(t)))) continue;
     const label = labelOf(it);
-    const body = [it.text, it.ocr?.text, it.name, it.title, it.desc, it.site, it.author, it.provider, it.href, it.src, it.label, ...tags].filter(Boolean).join('\n');
+    const body = [it.text, ...(Array.isArray(it.items) ? it.items.map((x) => x && x.t) : []), it.ocr?.text, it.name, it.title, it.desc, it.site, it.author, it.provider, it.href, it.src, it.label, ...tags].filter(Boolean).join('\n');
     const hay = low(label + '\n' + body);
     const segs = it.transcript?.segments || [];
     const segHit = (s) => words.every((w) => low(s[2]).includes(w));

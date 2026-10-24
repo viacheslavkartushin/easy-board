@@ -8,7 +8,7 @@ import { beginPen, beginErase, setAutoColor, requestDraw } from './ink.js';
 import {
   createCard, syncAll, setEditing, editing, EDITABLE, NOTE_COLORS, hitCard, cardsInRect, cardEl,
   bringToFront, contentBounds, rectOf, defaultSize, playEmbed, assetOk, safeHref, embedOk, labelOf,
-  editFrameTitle, FRAME_COLORS, ACCENTS,
+  editFrameTitle, FRAME_COLORS, ACCENTS, focusCheck, checkMd,
 } from './cards.js';
 import { expandWithFrames, snapDelta, clearGuides, align, distribute, wrapInFrame } from './layout.js';
 import { beginLink, renderAll as renderLinks } from './links.js';
@@ -364,8 +364,8 @@ async function addAndSelect(files, at) {
 }
 // Clipboard: custom MIME + text, mirrored in localStorage so cards move between projects/tabs
 const CLIP_KEY = 'board.clip';
-const KEEP = ['type', 'x', 'y', 'w', 'h', 'color', 'text', 'fs', 'lang', 'url', 'name', 'size', 'ar', 'start', 'end', 'peaks', 'transcript', 'href', 'src', 'title', 'desc', 'site', 'thumb', 'favicon', 'fetched', 'embed', 'provider', 'author', 'pid', 'cid', 'label', 'pname', 'error', 'tags', 'accent', 'archive', 'ocr'];
-const CARD_TYPES = new Set(['note', 'text', 'md', 'code', 'image', 'pdf', 'audio', 'video', 'file', 'link', 'embed', 'ref', 'frame']);
+const KEEP = ['items', 'type', 'x', 'y', 'w', 'h', 'color', 'text', 'fs', 'lang', 'url', 'name', 'size', 'ar', 'start', 'end', 'peaks', 'transcript', 'href', 'src', 'title', 'desc', 'site', 'thumb', 'favicon', 'fetched', 'embed', 'provider', 'author', 'pid', 'cid', 'label', 'pname', 'error', 'tags', 'accent', 'archive', 'ocr'];
+const CARD_TYPES = new Set(['check', 'note', 'text', 'md', 'code', 'image', 'pdf', 'audio', 'video', 'file', 'link', 'embed', 'ref', 'frame']);
 const ASSET_URL = /^\/assets\/[0-9a-f]{24}(\.[a-z0-9]{1,8})?$/;
 
 function buildClip() {
@@ -376,7 +376,7 @@ function buildClip() {
   const data = { v: 1, cards: structuredClone(cards), links: structuredClone(links) };
   for (const c of data.cards) delete c.tjob;
   const single = cards.length === 1 && ['note', 'text', 'md', 'code'].includes(cards[0].type) ? cards[0].text : null;
-  const plain = single ?? cards.map((c) => (c.name ? `${c.type}: ${c.name}` : c.type)).join(', ');
+  const plain = single ?? (cards.length === 1 && cards[0].type === 'check' ? checkMd(cards[0]) : null) ?? cards.map((c) => (c.name ? `${c.type}: ${c.name}` : c.type)).join(', ');
   return { data, plain };
 }
 function onCopy(e, cut) {
@@ -531,7 +531,7 @@ const TOOLS = [
   ['pen', 'Brush (P)'], ['eraser', 'Eraser (E)'], ['link', 'Connection between cards (L)'],
 ];
 const ADD = [
-  ['note', 'Note'], ['text', 'Text'], ['md', 'Markdown'], ['code', 'Code'], ['frame', 'Frame (group of cards)'],
+  ['note', 'Note'], ['check', 'Checklist'], ['text', 'Text'], ['md', 'Markdown'], ['code', 'Code'], ['frame', 'Frame (group of cards)'],
 ];
 function freeSpot(type) {
   const { w, h } = defaultSize(type);
@@ -565,7 +565,8 @@ $('#tools').addEventListener('click', (e) => {
   else if (b.dataset.add === 'file') picker.click();
   else if (b.dataset.add === 'url') toggleUrlbar();
   else if (b.dataset.add) {
-    const id = createCard(b.dataset.add, {}, freeSpot(b.dataset.add), { edit: b.dataset.add !== 'frame' });
+    const id = createCard(b.dataset.add, b.dataset.add === 'check' ? { items: [{ id: uid(), t: '', d: false }] } : {}, freeSpot(b.dataset.add), { edit: b.dataset.add !== 'frame' && b.dataset.add !== 'check' });
+    if (b.dataset.add === 'check') focusCheck(id);
     if (b.dataset.add === 'frame') setTimeout(() => editFrameTitle(id), 50);
     setTool('select');
   } else if (b.dataset.do === 'undo') undo();

@@ -10,7 +10,7 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
-# система и редакторы
+# OS and editors
 .DS_Store
 Thumbs.db
 desktop.ini

@@ -38,6 +38,7 @@ export async function apiConfirm(path, body) {
       return await api(path, { ...body, confirmed });
     } catch (e) {
       if (!e.confirm) throw e;
+      if (confirmed[e.confirm.kind || 'download']) throw new Error('The server did not accept the confirmation. Restart Easy Board: the running server is probably an older version.');
       if (!(await askDownload(e.confirm))) throw Object.assign(new Error('Cancelled'), { cancelled: true });
       confirmed[e.confirm.kind || 'download'] = true;
     }

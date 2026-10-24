@@ -22,8 +22,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 import transcribe as tr
 from fetcher import Fetcher
 from models import Models, Settings
-from downloads import NeedConfirm, ollama_info, llama_info, require, whisper_info
-from llama import LlamaEngine
+from downloads import NeedConfirm, llama_info, ollama_info, run_info, whisper_info
+from llama import LlamaEngine, LlamaError
 from ocr import Ollama, OcrService
 from projects import ProjectError, Projects
 
@@ -353,10 +353,24 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                 pass
 
         def _confirm_llama(self, body):
-            info = llama_info(mm.s.data["llama_model"], mm.s.data["hf_ok"])
-            require(info, body)
-            if info:
-                mm.s.confirm_hf(info["repo"])
+            try:
+                program, command = mm.llama.preview()
+            except LlamaError:
+                return  # a misconfiguration is reported by the normal error path
+            self._need(run_info(program, command), body)
+            self._need(llama_info(mm.s.data["llama_model"]), body)
+
+        def _need(self, info, body):
+            """One-time notices: shown until the user confirms once; the answer is stored in settings.json."""
+            if not info:
+                return
+            kind = info.get("kind", "download")
+            if mm.s.acknowledged(kind):
+                return
+            if (body.get("confirmed") or {}).get(kind):
+                mm.s.acknowledge(kind)
+                return
+            raise NeedConfirm(info)
 
         def _api_post(self, path, q):
             if path == "/api/upload":
@@ -441,13 +455,13 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                     mm.s.update(body)
                 elif path.endswith("whisper"):
                     if action == "load":
-                        require(whisper_info(trans.backend.models_dir, str(body.get("model") or "small")), body)
+                        self._need(whisper_info(trans.backend.models_dir, str(body.get("model") or "small")), body)
                     mm.whisper(action, body.get("model"))
                 else:
                     if action == "load" and mm.engine() == "llama":
                         self._confirm_llama(body)
                     elif action == "pull":
-                        require(ollama_info(str(body.get("model") or mm.s.data["vl_model"])), body)
+                        self._need(ollama_info(str(body.get("model") or mm.s.data["vl_model"])), body)
                     mm.vl(action, body.get("model"))
                 return self._json(200, {"ok": True})
             if path == "/api/ocr":
@@ -479,7 +493,7 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                 if not tr.available():
                     return self._json(501, {"error": "faster-whisper is not installed. Run `uv sync` in the project folder."})
                 if str(body.get("model", "small")) in tr.MODELS:
-                    require(whisper_info(trans.backend.models_dir, str(body.get("model", "small"))), body)
+                    self._need(whisper_info(trans.backend.models_dir, str(body.get("model", "small"))), body)
                 asset = str(body.get("asset", "")).removeprefix("/assets/")
                 job = trans.submit(asset, str(body.get("model", "small")), body.get("language"))
                 return self._json(200, trans.state(job))

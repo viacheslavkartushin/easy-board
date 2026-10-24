@@ -10,24 +10,28 @@ import llama as llamamod
 import ocr as ocrmod
 
 DEFAULTS = {"whisper_idle": 10, "vl_idle": 10, "vl_model": "glm-ocr", "vl_engine": "llama", "llama_bin": "llama-server",
-            "llama_model": "", "llama_mmproj": "", "llama_args": llamamod.DEFAULT_ARGS, "hf_ok": []}
+            "llama_model": "", "llama_mmproj": "", "llama_args": llamamod.DEFAULT_ARGS, "ack": {}}
 IDLE_CHOICES = (0, 2, 5, 10, 30, 60)  # minutes; 0 = never unload automatically
 
 
 class Settings:
     def __init__(self, path: Path):
         self.path = path
-        self.data = {**DEFAULTS, "hf_ok": []}
+        self.data = {**DEFAULTS, "ack": {}}
         try:
             self.data.update({k: v for k, v in json.loads(path.read_text("utf-8")).items() if k in DEFAULTS})
         except Exception:
             pass
-        if not (isinstance(self.data["hf_ok"], list) and all(isinstance(x, str) for x in self.data["hf_ok"])):
-            self.data["hf_ok"] = []
+        ack = self.data["ack"]
+        self.data["ack"] = {k: True for k in ("run", "download") if isinstance(ack, dict) and ack.get(k) is True}
 
-    def confirm_hf(self, repo: str):
-        if repo not in self.data["hf_ok"]:
-            self.data["hf_ok"] = [*self.data["hf_ok"], repo][-50:]
+    def acknowledged(self, kind: str) -> bool:
+        return bool(self.data["ack"].get(kind))
+
+    def acknowledge(self, kind: str):
+        """Remembers (also across restarts) that the user has seen and accepted a one-time notice."""
+        if kind in ("run", "download") and not self.data["ack"].get(kind):
+            self.data["ack"] = {**self.data["ack"], kind: True}
             self.path.write_text(json.dumps(self.data, ensure_ascii=False), "utf-8")
 
     def update(self, patch: dict):

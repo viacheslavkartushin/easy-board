@@ -34,7 +34,7 @@ def whisper_info(models_dir: Path, name: str) -> dict | None:
     cached = Path(models_dir) / ("models--" + repo.replace("/", "--"))
     if any(cached.glob("snapshots/*/model.bin")):
         return None
-    return {"what": f"Whisper model “{name}” (speech to text)", "source": "Hugging Face", "url": hf_url(repo),
+    return {"kind": "download", "what": f"Whisper model “{name}” (speech to text)", "source": "Hugging Face", "url": hf_url(repo),
             "repo": repo, "size": "about " + size, "dest": str(models_dir)}
 
 
@@ -60,23 +60,23 @@ def hf_cached(repo: str) -> bool:
         return False
 
 
-def llama_info(spec: str, confirmed: list[str]) -> dict | None:
+def llama_info(spec: str) -> dict | None:
     """Download info for a llama-server -hf argument, or None if nothing will be downloaded."""
     spec = (spec or "").strip()
     if not spec or spec.lower().endswith(".gguf") or Path(spec).exists():
         return None
     repo = spec.split(":", 1)[0]
-    if not REPO_RE.match(repo) or repo in confirmed or hf_cached(repo):
+    if not REPO_RE.match(repo) or hf_cached(repo):
         return None
-    return {"what": f"Vision model “{spec}” (text in images)", "source": "Hugging Face", "url": hf_url(repo), "repo": repo,
+    return {"kind": "download", "what": f"Vision model “{spec}” (text in images)", "source": "Hugging Face", "url": hf_url(repo), "repo": repo,
             "size": "size depends on the files in the repository, see the page", "dest": str(llama_cache_dir())}
 
 
 def ollama_info(model: str) -> dict:
-    return {"what": f"Ollama model “{model}” (text in images)", "source": "ollama.com", "url": "https://ollama.com/library/" + model.split(":")[0].split("/")[-1],
+    return {"kind": "download", "what": f"Ollama model “{model}” (text in images)", "source": "ollama.com", "url": "https://ollama.com/library/" + model.split(":")[0].split("/")[-1],
             "repo": model, "size": "size is shown on the model page", "dest": "Ollama's own model folder"}
 
 
-def require(info: dict | None, body: dict):
-    if info and not body.get("confirm"):
-        raise NeedConfirm(info)
+def run_info(program: str, command: str) -> dict:
+    """Notice shown before the first start of a third-party program (llama-server)."""
+    return {"kind": "run", "what": "llama-server", "program": program, "command": command, "url": "https://github.com/ggml-org/llama.cpp"}

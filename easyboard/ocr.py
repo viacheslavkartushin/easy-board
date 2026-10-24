@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-import llama as llamamod
+from . import llama as llamamod
 
 ASSET_RE = re.compile(r"^[0-9a-f]{24}(\.[a-z0-9]{1,8})?$")
 IMG_OK = {".png", ".jpg", ".jpeg", ".webp"}

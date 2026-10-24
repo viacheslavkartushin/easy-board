@@ -253,7 +253,8 @@ button { font: inherit; color: inherit; }
 .prow:hover .pd { display: none; }
 .prow button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; }
 .prow button:hover { background: var(--hover); color: var(--text); }
-.prow button.yes { width: auto; padding: 0 8px; color: #e03131; font-size: 12px; }
+.prow button.yes, .prow button[data-a=no] { width: auto; padding: 0 8px; font-size: 12px; }
+.prow button.yes { color: #e03131; }
 .prow input, .pnew input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 7px; background: var(--card); color: var(--text); font: inherit; outline: none; }
 .pnew { display: flex; gap: 6px; padding: 4px; }
 .pnew button, .pfoot button { height: 30px; padding: 0 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; font-size: 13px; }

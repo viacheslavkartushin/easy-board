@@ -6,8 +6,9 @@ import threading
 import time
 from pathlib import Path
 
-import llama as llamamod
-import ocr as ocrmod
+from . import llama as llamamod
+from . import transcribe
+from . import ocr as ocrmod
 
 DEFAULTS = {"whisper_idle": 10, "vl_idle": 10, "vl_model": "glm-ocr", "vl_engine": "llama", "llama_bin": "llama-server",
             "llama_model": "", "llama_mmproj": "", "llama_args": llamamod.DEFAULT_ARGS, "ack": {}}
@@ -90,7 +91,7 @@ class Models:
             "device": wst.get("device"), "loading": self.w_loading or bool(wst.get("loading")),
             "busy": self.trans.busy(), "pinned": self.w_pinned and bool(wst.get("loaded")),
             "idle": self.s.data["whisper_idle"], "error": self.w_error,
-            "models": list(__import__("transcribe").MODELS),
+            "models": list(transcribe.MODELS),
         }
         if self.engine() == "llama":
             return {"whisper": w, "vl": self._llama_status(), "settings": dict(self.s.data), "idle_choices": list(IDLE_CHOICES)}

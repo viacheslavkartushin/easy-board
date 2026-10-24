@@ -1,4 +1,5 @@
 import { S, bus, api, dirty, touch, savePrefs, toast } from './store.js';
+import { apiConfirm } from './confirm.js';
 import { I } from './icons.js';
 
 const MODELS = [
@@ -48,14 +49,14 @@ export function createTranscript(item0, player) {
     u.status = 'queued';
     render(it, true);
     try {
-      const j = await api('/api/transcribe', { asset: it.url, model: S.whisper.model, language: S.whisper.lang || null });
+      const j = await apiConfirm('/api/transcribe', { asset: it.url, model: S.whisper.model, language: S.whisper.lang || null });
       u.job = j.id;
       it.tjob = j.id;
       dirty();
       poll();
     } catch (e) {
       u.status = '';
-      u.error = e.message;
+      u.error = e.cancelled ? '' : e.message;
       render(it, true);
     }
   }

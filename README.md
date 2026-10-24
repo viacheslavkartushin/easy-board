@@ -1,7 +1,9 @@
-# Board
+# Easy Board
 
-A local infinite whiteboard: drawing, notes, Markdown, code with syntax highlighting, images (including from the clipboard), PDF, audio and video, and connections between cards.
-Everything is stored on your disk in the `data/` folder (no cloud; the server listens on `127.0.0.1` only).
+A local whiteboard: drawing, notes, Markdown, code with syntax highlighting, images (including from the clipboard), PDF, audio and video, and connections between cards.
+Everything is stored on your disk in the `data/` folder (no cloud; by default the server listens on `127.0.0.1` only, i.e. this computer).
+
+> **Disclaimer.** Easy Board was written as a strictly **local, single-user tool**. It has no accounts, no passwords and no encryption, and it is **not designed or hardened to be exposed to a network or the internet**. The `--host` option exists only so you can run it on a trusted home or office network at your own risk: anyone who can reach the address can read and change your boards, upload files, and make the server fetch web addresses. Do not put it behind a public address or port forwarding. The software is provided "as is", without warranty of any kind, and the author takes no responsibility for any damage, data loss or security incident resulting from its use, in particular from running it on a network.
 
 ## Running
 
@@ -10,7 +12,7 @@ uv run main.py
 ```
 
 or double-click `start.bat` (Windows) / run `./start.sh` (Linux, macOS; if needed `chmod +x start.sh` first). A browser opens at http://localhost:8765/
-Options: `--port 9000`, `--data D:\boards\work` (a different data folder), `--no-browser`.
+Options (`uv run main.py --help` lists them): `--port 9000`, `--host 0.0.0.0` (listen on the local network, see the disclaimer above; default `127.0.0.1`), `--data D:\boards\work` (a different data folder), `--no-browser`.
 Only uv is required: it installs Python and the dependencies itself (on first run `faster-whisper` ≈ 200 MB is downloaded — that is for transcription). The JS libraries (marked, DOMPurify, highlight.js) live in `web/vendor/`.
 More options: `--device cpu` (transcribe on the CPU only), `--gc` (delete files that no project references, then exit).
 
@@ -91,9 +93,12 @@ The down-arrow button at the top right:
 
 ### Models in memory and text recognition in images
 
+Nothing is downloaded behind your back: before the first use of a model that is not on your computer (a Whisper model from Hugging Face, a vision model for `llama-server -hf`, an Ollama model) the board shows a confirmation with the source link, the approximate size and the destination folder. You can cancel. Starting `llama-server` (a separate third-party program, llama.cpp) gets its own notice with the exact command. Each kind of notice is shown only until you confirm it once; the confirmation is stored in `data/settings.json` (`ack`) and is not asked again, even after a restart (delete the `ack` entry to see the notices again).
+
 The chip button at the top right opens the **"Models"** panel. Each model has a toggle: switch it on and the model is loaded into memory (the GPU) and waits; switch it off and the memory is freed. If a model was loaded on its own (you pressed "Transcribe" or "Recognize text" while the toggle was off), it is unloaded after idling; the time is chosen in the panel (10 minutes by default, or "never"). A green dot on the button means something is in memory right now. A model cannot be switched off while it is working.
 
 - **Speech → text**: Whisper, as before; it can be loaded ahead of time so the first transcription does not wait.
 - **Text in images**: images have a "Recognize text" button. The result sits under the image (the first line by default); it can be copied, turned into a note, and it is included in search (Ctrl+F) and the Markdown export. Image formats: PNG, JPG, WebP. The engine is chosen in the panel: **llama.cpp** (default) or Ollama.
-- **llama.cpp**: the board launches `llama-server` with a vision model itself when you switch the toggle on or press "Recognize", and **stops the process** when you switch it off or after idling, so memory (including VRAM) is freed completely. In the panel enter: the path to `llama-server.exe`, the model (a `.gguf` file + an `mmproj-….gguf` file, or a Hugging Face repository such as `ggml-org/GLM-OCR-GGUF` — then `-hf` downloads everything itself on first launch) and the arguments (default `-c 12000 -ngl 99 --flash-attn off`: all layers on the GPU; for GLM-OCR flash-attn must be off). The board sets the host and port itself. Startup log: `data/.tmp/llama-server.log`. For `glm-ocr` models the prompt `Text Recognition:` is used.
+- **llama.cpp**: the board launches `llama-server` with a vision model itself when you switch the toggle on or press "Recognize", and **stops the process** when you switch it off or after idling, so memory (including VRAM) is freed completely. In the panel enter: the path to `llama-server.exe`, the model (a `.gguf` file + an `mmproj-….gguf` file, or a Hugging Face repository such as `ggml-org/GLM-OCR-GGUF` — then `-hf` downloads everything itself on first launch) and the arguments (default `-c 12000 -ngl 99 --flash-attn off`: all layers on the GPU; for GLM-OCR flash-attn must be off). The board sets the host and port itself. If the toggle is greyed out, the reason is shown in red (binary not found, model not set, file not found) and the offending field is highlighted. Startup log: `data/.tmp/llama-server.log`. For `glm-ocr` models the prompt `Text Recognition:` is used.
 - Ollama, if you want it: the default address is `http://127.0.0.1:11434`, another one via `uv run main.py --ollama http://host:11434`.
+- When the board listens on the network (`--host`), the program paths of llama.cpp can only be changed from the computer running it (or by editing `data/settings.json`).

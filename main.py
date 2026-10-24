@@ -1,13 +1,15 @@
-"""Local infinite whiteboard. Run: uv run main.py"""
+"""Easy Board: a local whiteboard. Run: uv run main.py"""
 from __future__ import annotations
 
 import argparse
 import atexit
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import shutil
+import socket
 import sys
 import threading
 import time
@@ -20,6 +22,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import transcribe as tr
 from fetcher import Fetcher
 from models import Models, Settings
+from downloads import NeedConfirm, ollama_info, llama_info, require, whisper_info
 from llama import LlamaEngine
 from ocr import Ollama, OcrService
 from projects import ProjectError, Projects
@@ -57,9 +60,36 @@ ASSET_TYPES = {
 }
 
 ALLOWED_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
+LAN_KEYS = ("llama_bin", "llama_model", "llama_mmproj", "llama_args")
 
 
-def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Models, ocr: OcrService):
+def is_loopback(addr: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(addr.split("%")[0])
+        return ip.is_loopback or bool(getattr(ip, "ipv4_mapped", None) and ip.ipv4_mapped.is_loopback)
+    except ValueError:
+        return False
+
+
+def host_allowed(header: str, bind: str) -> bool:
+    """Host header check against DNS rebinding: loopback names, the bind address, IP literals and this machine's name on a LAN."""
+    host = (header or "").strip().lower()
+    name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
+    if name in ALLOWED_HOSTS:
+        return True
+    if is_loopback(bind):
+        return False
+    bare = name.strip("[]")
+    try:
+        ipaddress.ip_address(bare)
+        return True
+    except ValueError:
+        pass
+    mine = socket.gethostname().lower()
+    return bare in (mine, mine + ".local", socket.getfqdn().lower())
+
+
+def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Models, ocr: OcrService, bind: str = "127.0.0.1"):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
         server_version = "Board/2"
@@ -69,9 +99,7 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                 super().log_message(fmt, *args)
 
         def _host_ok(self) -> bool:
-            host = (self.headers.get("Host") or "").strip().lower()
-            name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
-            return name in ALLOWED_HOSTS
+            return host_allowed(self.headers.get("Host") or "", bind)
 
         def _send(self, code, body=b"", ctype="application/json", extra=None):
             self.send_response(code)
@@ -317,10 +345,18 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                     return self._api_post(u.path, q)
                 except ProjectError as e:
                     return self._json(e.code, {"error": str(e)})
+                except NeedConfirm as e:
+                    return self._json(409, {"error": str(e), "confirm": e.info})
                 except ValueError as e:
                     return self._json(400, {"error": str(e)})
             except (ConnectionError, TimeoutError):
                 pass
+
+        def _confirm_llama(self, body):
+            info = llama_info(mm.s.data["llama_model"], mm.s.data["hf_ok"])
+            require(info, body)
+            if info:
+                mm.s.confirm_hf(info["repo"])
 
         def _api_post(self, path, q):
             if path == "/api/upload":
@@ -398,17 +434,28 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                 body = self._read_json()
                 if body is None:
                     return
+                action = str(body.get("action", ""))
                 if path.endswith("settings"):
+                    if any(k in body for k in LAN_KEYS) and not is_loopback(self.client_address[0]):
+                        return self._json(403, {"error": "Program paths can only be changed from the computer running the board (or edit data/settings.json)"})
                     mm.s.update(body)
                 elif path.endswith("whisper"):
-                    mm.whisper(str(body.get("action", "")), body.get("model"))
+                    if action == "load":
+                        require(whisper_info(trans.backend.models_dir, str(body.get("model") or "small")), body)
+                    mm.whisper(action, body.get("model"))
                 else:
-                    mm.vl(str(body.get("action", "")), body.get("model"))
+                    if action == "load" and mm.engine() == "llama":
+                        self._confirm_llama(body)
+                    elif action == "pull":
+                        require(ollama_info(str(body.get("model") or mm.s.data["vl_model"])), body)
+                    mm.vl(action, body.get("model"))
                 return self._json(200, {"ok": True})
             if path == "/api/ocr":
                 body = self._read_json()
                 if body is None:
                     return
+                if mm.engine() == "llama":
+                    self._confirm_llama(body)
                 asset = str(body.get("asset", "")).removeprefix("/assets/")
                 job = ocr.submit(asset, mm.vl_label(), mm.vl_keep(), mm.engine())
                 return self._json(200, ocr.state(job))
@@ -431,6 +478,8 @@ def make_handler(store: Projects, trans: tr.Transcriber, fetch: Fetcher, mm: Mod
                     return
                 if not tr.available():
                     return self._json(501, {"error": "faster-whisper is not installed. Run `uv sync` in the project folder."})
+                if str(body.get("model", "small")) in tr.MODELS:
+                    require(whisper_info(trans.backend.models_dir, str(body.get("model", "small"))), body)
                 asset = str(body.get("asset", "")).removeprefix("/assets/")
                 job = trans.submit(asset, str(body.get("model", "small")), body.get("language"))
                 return self._json(200, trans.state(job))
@@ -453,16 +502,43 @@ class Server(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+class Server6(Server):
+    address_family = socket.AF_INET6
+
+
+def lan_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
 def main():
-    ap = argparse.ArgumentParser(description="Local infinite whiteboard")
-    ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--data", default=str(ROOT / "data"), help="data folder")
-    ap.add_argument("--device", choices=["auto", "cpu"], default="auto", help="for transcription: auto uses the GPU if there is one")
-    ap.add_argument("--ollama", default=os.environ.get("OLLAMA_HOST_URL", "http://127.0.0.1:11434"), help="Ollama address for text recognition in images")
-    ap.add_argument("--gc", action="store_true", help="delete files that no project references, then exit")
-    ap.add_argument("--no-browser", action="store_true")
-    ap.add_argument("--verbose", action="store_true")
+    ap = argparse.ArgumentParser(
+        prog="main.py", formatter_class=argparse.RawDescriptionHelpFormatter, add_help=False,
+        description="Easy Board: a local whiteboard. Everything is stored in the data folder.",
+        usage="uv run main.py [options]",
+        epilog="examples:\n  uv run main.py                        open the board on this computer\n"
+               "  uv run main.py --host 0.0.0.0         also reachable from your local network (no password!)\n"
+               "  uv run main.py --port 9000 --no-browser")
+    g = ap.add_argument_group("options")
+    g.add_argument("-h", "--help", action="help", help="show this help and exit")
+    g.add_argument("--port", type=int, default=8765, metavar="N", help="port to listen on (default 8765)")
+    g.add_argument("--host", default="127.0.0.1", metavar="IP", help="address to listen on (default 127.0.0.1: this computer only; 0.0.0.0: whole network)")
+    g.add_argument("--data", default=str(ROOT / "data"), metavar="DIR", help="data folder (default: ./data)")
+    g.add_argument("--device", choices=["auto", "cpu"], default="auto", help="transcription device: auto uses the GPU if there is one")
+    g.add_argument("--ollama", default=os.environ.get("OLLAMA_HOST_URL", "http://127.0.0.1:11434"), metavar="URL", help="Ollama address, if you use it for text in images")
+    g.add_argument("--gc", action="store_true", help="delete files no project uses, then exit")
+    g.add_argument("--no-browser", action="store_true", help="do not open the browser")
+    g.add_argument("--verbose", action="store_true", help="log every request")
     args = ap.parse_args()
+    try:
+        bind_ip = ipaddress.ip_address(args.host.strip("[]"))
+    except ValueError:
+        sys.exit(f"--host must be an IP address (for example 127.0.0.1 or 0.0.0.0), got: {args.host}")
+    bind = str(bind_ip)
 
     store = Projects(Path(args.data))
     if args.gc:
@@ -476,19 +552,27 @@ def main():
     atexit.register(llama.stop)
     ocr = OcrService(store.assets, Ollama(args.ollama), llama)
     mm = Models(settings, backend, trans, ocr, lambda: tr.available(), llama)
+    handler = make_handler(store, trans, Fetcher(store.assets, store.tmp), mm, ocr, bind)
+    cls = Server6 if bind_ip.version == 6 else Server
     httpd = None
     for port in range(args.port, args.port + 20):
         try:
-            httpd = Server(("127.0.0.1", port), make_handler(store, trans, Fetcher(store.assets, store.tmp), mm, ocr))
+            httpd = cls((bind, port), handler)
             break
         except OSError:
             continue
     if httpd is None:
         sys.exit("Could not bind a port")
-    url = f"http://localhost:{port}/"
-    print(f"Board: {url}\nData: {store.dir}\nCtrl+C to stop")
+    local = f"http://localhost:{port}/"
+    print(f"Easy Board: {local}\nData: {store.dir}")
+    if not is_loopback(bind):
+        shown = lan_ip() if bind_ip.is_unspecified else bind
+        print(f"Network: http://{shown}:{port}/\n"
+              "WARNING: there is no password. Anyone who can reach this address can read and change the board.\n"
+              "Use it only on a network you trust.")
+    print("Ctrl+C to stop")
     if not args.no_browser:
-        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.4, lambda: webbrowser.open(local)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

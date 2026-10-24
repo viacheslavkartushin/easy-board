@@ -71,7 +71,7 @@ class LlamaEngine:
             raise LlamaError(f"llama-server not found: \"{b}\". Enter the full path to llama-server.exe in the models panel.")
         return found
 
-    def _command(self) -> list[str]:
+    def _command(self, port=None) -> list[str]:
         c = self.cfg()
         if not c["model"]:
             raise LlamaError("No model specified: a path to a .gguf file or a Hugging Face repository (e.g. ggml-org/GLM-OCR-GGUF).")
@@ -90,7 +90,12 @@ class LlamaEngine:
             cmd += shlex.split(c["args"], posix=(os.name != "nt"))
         except ValueError:
             raise LlamaError("Could not parse the extra arguments") from None
-        return cmd + ["--host", "127.0.0.1", "--port", str(self.port)]  # our values come last and win
+        return cmd + ["--host", "127.0.0.1", "--port", str(port or self.port)]  # our values come last and win
+
+    def preview(self) -> tuple[str, str]:
+        """(program path, full command line) as it would be started; raises LlamaError if it cannot be."""
+        cmd = self._command(port="<free port>")
+        return cmd[0], subprocess.list2cmdline(cmd)
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -186,7 +191,16 @@ class LlamaEngine:
             self._binary()
         except LlamaError as e:
             binary_ok, binary_err = False, str(e)
-        return {"engine": "llama", "binary_ok": binary_ok, "binary_error": binary_err, "model": c["model"], "mmproj": c["mmproj"],
+        problem = None  # what prevents switching it on: {"field": which input, "text": message}
+        if not binary_ok:
+            problem = {"field": "bin", "text": binary_err}
+        elif not c["model"]:
+            problem = {"field": "model", "text": "Model is not set: enter a .gguf file path or a Hugging Face repository (for example ggml-org/GLM-OCR-GGUF)."}
+        elif (c["model"].lower().endswith(".gguf") or Path(c["model"]).exists()) and not Path(c["model"]).is_file():
+            problem = {"field": "model", "text": f"Model file not found: {c['model']}"}
+        elif c["mmproj"] and not Path(c["mmproj"]).is_file():
+            problem = {"field": "mmproj", "text": f"mmproj file not found: {c['mmproj']}"}
+        return {"problem": problem, "engine": "llama", "binary_ok": binary_ok, "binary_error": binary_err, "model": c["model"], "mmproj": c["mmproj"],
                 "args": c["args"], "bin": c["bin"], "configured": bool(c["model"]), "loaded": self.alive() and self.ready,
                 "loading": self.alive() and self.starting, "pid": self.proc.pid if self.alive() else None,
                 "vram": self.vram() if self.alive() and self.ready else 0, "error": self.error,

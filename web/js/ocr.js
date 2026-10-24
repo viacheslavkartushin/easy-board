@@ -1,4 +1,5 @@
 import { S, bus, api, dirty, touch, toast } from './store.js';
+import { apiConfirm } from './confirm.js';
 import { I } from './icons.js';
 
 const ui = new Map();
@@ -20,10 +21,10 @@ export function createOcr(item0) {
     u.error = ''; u.text = ''; u.status = 'queued';
     render(it, true);
     try {
-      const j = await api('/api/ocr', { asset: it.url });
+      const j = await apiConfirm('/api/ocr', { asset: it.url });
       u.job = j.id; it.ojob = j.id; dirty();
       poll();
-    } catch (e) { u.status = ''; u.error = e.message; render(it, true); }
+    } catch (e) { u.status = ''; u.error = e.cancelled ? '' : e.message; render(it, true); }
   }
   function poll() {
     const u = st(it.id);

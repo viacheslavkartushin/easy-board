@@ -10,18 +10,25 @@ import llama as llamamod
 import ocr as ocrmod
 
 DEFAULTS = {"whisper_idle": 10, "vl_idle": 10, "vl_model": "glm-ocr", "vl_engine": "llama", "llama_bin": "llama-server",
-            "llama_model": "", "llama_mmproj": "", "llama_args": llamamod.DEFAULT_ARGS}
+            "llama_model": "", "llama_mmproj": "", "llama_args": llamamod.DEFAULT_ARGS, "hf_ok": []}
 IDLE_CHOICES = (0, 2, 5, 10, 30, 60)  # minutes; 0 = never unload automatically
 
 
 class Settings:
     def __init__(self, path: Path):
         self.path = path
-        self.data = dict(DEFAULTS)
+        self.data = {**DEFAULTS, "hf_ok": []}
         try:
             self.data.update({k: v for k, v in json.loads(path.read_text("utf-8")).items() if k in DEFAULTS})
         except Exception:
             pass
+        if not (isinstance(self.data["hf_ok"], list) and all(isinstance(x, str) for x in self.data["hf_ok"])):
+            self.data["hf_ok"] = []
+
+    def confirm_hf(self, repo: str):
+        if repo not in self.data["hf_ok"]:
+            self.data["hf_ok"] = [*self.data["hf_ok"], repo][-50:]
+            self.path.write_text(json.dumps(self.data, ensure_ascii=False), "utf-8")
 
     def update(self, patch: dict):
         for k in ("whisper_idle", "vl_idle"):

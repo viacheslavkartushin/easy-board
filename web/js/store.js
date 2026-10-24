@@ -154,7 +154,7 @@ export async function api(path, body, method = 'POST') {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || r.status);
+  if (!r.ok) throw Object.assign(new Error(data.error || r.status), { confirm: data.confirm });
   return data;
 }
 

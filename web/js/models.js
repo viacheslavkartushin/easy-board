@@ -1,4 +1,5 @@
 import { S, bus, $, api, toast, savePrefs } from './store.js';
+import { apiConfirm } from './confirm.js';
 import { I } from './icons.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -46,22 +47,23 @@ function engSel(v) {
 }
 
 function llamaRow(v) {
-  const canToggle = v.configured && v.binary_ok && !v.busy && !v.loading;
+  const canToggle = !v.problem && !v.busy && !v.loading;
+  const why = v.problem ? v.problem.text : v.busy ? 'Recognition is in progress' : v.loading ? 'The model is loading' : '';
+  const bad = (f) => (v.problem && v.problem.field === f ? 'class="bad"' : '');
   let state;
   if (v.loading) state = '<span class="m-busy"><i class="spin"></i>llama-server is loading the model…</span><div class="m-hint">On the first run with a Hugging Face repo, the model is downloaded first</div>';
   else if (v.loaded) state = `<b>In memory</b> · ${v.vram ? gb(v.vram) + ' VRAM' : 'llama-server is running'}${v.pinned ? '' : ' · unloads itself after ' + (v.idle ? (IDLE[v.idle] || v.idle + ' min') : 'never') + ' idle'}`;
-  else if (!v.binary_ok) state = `<span class="m-err">${esc(v.binary_error)}</span>`;
-  else if (!v.configured) state = 'Set the model below — a .gguf file or a Hugging Face repo';
+  else if (v.problem) state = `<span class="m-err">⚠ ${esc(v.problem.text)}</span>`;
   else state = 'Unloaded — uses no memory';
   if (v.error) state += `<div class="m-err">⚠ ${esc(v.error)}</div>${v.log && v.log.length ? `<pre class="m-log">${esc(v.log.join('\n'))}</pre>` : ''}`;
   return `<div class="mrow" data-m="vl">
-    <div class="mh"><label class="tgl ${v.loaded || v.loading ? 'on' : ''} ${canToggle || v.loaded ? '' : 'dis'}" title="${v.loaded ? 'Stop llama-server and free the memory' : 'Start llama-server and keep it running until you switch it off'}"><input type="checkbox" data-a="v-toggle" ${v.loaded || v.loading ? 'checked' : ''} ${(canToggle || v.loaded) && !v.busy ? '' : 'disabled'}><i></i></label>
+    <div class="mh"><label class="tgl ${v.loaded || v.loading ? 'on' : ''} ${canToggle || v.loaded ? '' : 'dis'}" title="${esc(v.loaded ? 'Stop llama-server and free the memory' : why || 'Start llama-server and keep it running until you switch it off')}"><input type="checkbox" data-a="v-toggle" ${v.loaded || v.loading ? 'checked' : ''} ${(canToggle || v.loaded) && !v.busy ? '' : 'disabled'}><i></i></label>
       <div class="mt"><b>Text in images</b><span>VL model · llama.cpp</span></div></div>
     <div class="ms">${state}${v.busy ? '<div class="m-hint">Recognizing…</div>' : ''}</div>
     <div class="mc mcol">
-      <label>llama-server <input data-a="l-bin" value="${esc(v.bin)}" placeholder="llama-server or C:\\llama\\llama-server.exe"></label>
-      <label>Model <input data-a="l-model" value="${esc(v.model)}" placeholder="C:\\models\\GLM-OCR-Q8_0.gguf or ggml-org/GLM-OCR-GGUF"></label>
-      <label>mmproj <input data-a="l-mmproj" value="${esc(v.mmproj)}" placeholder="mmproj-….gguf file (needed for a .gguf; not needed for a repo)"></label>
+      <label>llama-server <input ${bad('bin')} data-a="l-bin" value="${esc(v.bin)}" placeholder="llama-server or C:\\llama\\llama-server.exe"></label>
+      <label>Model <input ${bad('model')} data-a="l-model" value="${esc(v.model)}" placeholder="C:\\models\\GLM-OCR-Q8_0.gguf or ggml-org/GLM-OCR-GGUF"></label>
+      <label>mmproj <input ${bad('mmproj')} data-a="l-mmproj" value="${esc(v.mmproj)}" placeholder="mmproj-….gguf file (needed for a .gguf; not needed for a repo)"></label>
       <label>Arguments <input data-a="l-args" value="${esc(v.args)}"></label>
       <div class="mrow2">${engSel(v)}<label>Auto-unload <select data-a="v-idle">${st.idle_choices.map((c) => `<option value="${c}" ${c === v.idle ? 'selected' : ''}>${IDLE[c]}</option>`).join('')}</select></label></div>
     </div>
@@ -76,7 +78,7 @@ function vlRow(v) {
   else if (p && !p.done) {
     const pct = p.total ? Math.round((p.completed / p.total) * 100) : 0;
     state = `<span class="m-busy"><i class="spin"></i>Downloading ${esc(p.model)}: ${pct}%</span><div class="mbar"><i style="width:${pct}%"></i></div><button class="chip-s" data-a="v-cancelpull">Cancel</button>`;
-  } else if (!v.installed) state = `Model “${esc(v.model)}” is not downloaded. <button class="chip-s go" data-a="v-pull">Download</button>${p?.error ? `<div class="m-err">⚠ ${esc(p.error)}</div>` : ''}`;
+  } else if (!v.installed) state = `<span class="m-err">⚠ Model “${esc(v.model)}” is not downloaded.</span> <button class="chip-s go" data-a="v-pull">Download</button>${p?.error ? `<div class="m-err">⚠ ${esc(p.error)}</div>` : ''}`;
   else if (v.loaded) {
     const where = v.vram >= v.size * 0.95 ? 'GPU' : v.vram > 0 ? `partly on the GPU (${gb(v.vram)} of ${gb(v.size)})` : 'CPU (RAM)';
     state = `<b>In memory</b> · ${gb(v.size)} · ${where}${v.pinned ? '' : ' · unloads itself after ' + (v.idle ? (IDLE[v.idle] || v.idle + ' min') : 'never') + ' idle'}`;
@@ -107,7 +109,7 @@ function render() {
 async function act(path, body, okMsg) {
   if (busyAction) return;
   busyAction = true;
-  try { await api(path, body); if (okMsg) toast(okMsg, 1200); } catch (e) { toast(e.message, 4500); } finally { busyAction = false; }
+  try { await apiConfirm(path, body); if (okMsg) toast(okMsg, 1200); } catch (e) { if (!e.cancelled) toast(e.message, 4500); } finally { busyAction = false; }
   await fetchState(); schedule();
 }
 

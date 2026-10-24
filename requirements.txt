@@ -1,4 +1,4 @@
-# Нужен только для транскрипции аудио/видео; остальное работает на стандартной библиотеке Python.
-# Основной способ установки — uv (uv sync); этот файл для pip: pip install -r requirements.txt
+# Only needed for audio/video transcription; everything else uses the Python standard library.
+# uv users: "uv sync" does the same. pip users: start-pip.sh / start-pip.bat install this file into .venv.
 faster-whisper>=1.1
-av<19  # PyAV 19 убрал metadata_errors, который ещё использует faster-whisper 1.2.x
+av<19  # PyAV 19 removed metadata_errors, which faster-whisper 1.2.x still uses

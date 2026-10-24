@@ -13,6 +13,7 @@ uv run main.py
 
 or double-click `start.bat` (Windows) / run `./start.sh` (Linux, macOS; if needed `chmod +x start.sh` first). A browser opens at http://localhost:8765/
 Options (`uv run main.py --help` lists them): `--port 9000`, `--host 0.0.0.0` (listen on the local network, see the disclaimer above; default `127.0.0.1`), `--data D:\boards\work` (a different data folder), `--no-browser`.
+Without uv, with plain pip: double-click `start-pip.bat` (Windows) or run `./start-pip.sh` (Linux, macOS). They need Python 3.10+, create `.venv` next to the project, install `requirements.txt` on the first run and start the board; arguments are passed through (`./start-pip.sh --port 9000`). If you do not need transcription, skip the install: `python main.py` works on the standard library alone.
 Only uv is required: it installs Python and the dependencies itself (on first run `faster-whisper` ≈ 200 MB is downloaded — that is for transcription). The JS libraries (marked, DOMPurify, highlight.js) live in `web/vendor/`.
 More options: `--device cpu` (transcribe on the CPU only), `--gc` (delete files that no project references, then exit).
 

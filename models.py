@@ -11,7 +11,7 @@ import ocr as ocrmod
 
 DEFAULTS = {"whisper_idle": 10, "vl_idle": 10, "vl_model": "glm-ocr", "vl_engine": "llama", "llama_bin": "llama-server",
             "llama_model": "", "llama_mmproj": "", "llama_args": llamamod.DEFAULT_ARGS, "ack": {}}
-IDLE_CHOICES = (0, 2, 5, 10, 30, 60)  # minutes; 0 = never unload automatically
+IDLE_CHOICES = (-1, 0, 2, 5, 10, 30, 60)  # minutes; 0 = never unload automatically, -1 = right after each job
 
 
 class Settings:
@@ -79,6 +79,8 @@ class Models:
     def vl_keep(self):
         if self.vl_pinned or self.s.data["vl_idle"] == 0:
             return -1
+        if self.s.data["vl_idle"] < 0:
+            return 0
         return f"{self.s.data['vl_idle']}m"
 
     def status(self) -> dict:
@@ -204,12 +206,12 @@ class Models:
 
     def _idle_loop(self):
         while True:
-            time.sleep(15)
+            time.sleep(2)
             try:
                 idle = self.s.data["whisper_idle"]
                 if (idle and not self.w_pinned and not self.w_loading and not self.trans.busy()
                         and hasattr(self.wb, "status") and self.wb.status().get("loaded")
-                        and time.time() - getattr(self.wb, "last_used", time.time()) > idle * 60):
+                        and time.time() - getattr(self.wb, "last_used", time.time()) > max(idle, 0) * 60 + 1):
                     self.wb.unload()
             except Exception:
                 pass
@@ -217,7 +219,7 @@ class Models:
                 idle = self.s.data["vl_idle"]
                 e = self.llama
                 if (e and idle and not self.vl_pinned and e.alive() and e.ready and not self.ocr.busy()
-                        and time.time() - e.last_used > idle * 60):
+                        and time.time() - e.last_used > max(idle, 0) * 60 + 1):
                     e.stop()
             except Exception:
                 pass

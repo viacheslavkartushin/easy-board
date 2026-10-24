@@ -107,6 +107,7 @@ export function createTranscript(item0, player) {
     const s = segments();
     const key = [it.transcript ? 'T' + it.transcript.segments.length : 'P' + u.partial.length, u.status, Math.round(u.progress * 100), u.error, u.open, u.queue, S.whisper.model, S.whisper.lang].join('|');
     if (key === sig && !force) return;
+    if (head.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return; // do not close an open dropdown
     sig = key;
     segs = s;
     renderHead(u, s);
@@ -193,6 +194,7 @@ export function createTranscript(item0, player) {
       navigator.clipboard?.writeText(text).then(() => toast('Transcript copied', 1400));
     }
   });
+  root.addEventListener('focusout', () => setTimeout(() => render(it, true), 0));
   root.addEventListener('change', (e) => {
     const a = e.target.dataset.a;
     if (a === 'model') S.whisper.model = e.target.value;

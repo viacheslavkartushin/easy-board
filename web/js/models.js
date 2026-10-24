@@ -3,18 +3,21 @@ import { apiConfirm } from './confirm.js';
 import { I } from './icons.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const idleTxt = (n) => (n < 0 ? ' · unloads itself right after use' : n ? ' · unloads itself after ' + (IDLE[n] || n + ' min') + ' idle' : '');
+const unloadBtn = (a) => `<button class="chip-s" data-a="${a}" title="Free the memory right now">Unload now</button>`;
 const gb = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB');
-const IDLE = { 0: 'never', 2: '2 min', 5: '5 min', 10: '10 min', 30: '30 min', 60: '1 hour' };
+const IDLE = { '-1': 'instantly', 0: 'never', 2: '2 min', 5: '5 min', 10: '10 min', 30: '30 min', 60: '1 hour' };
 
 const box = document.createElement('div');
 box.id = 'modelsbar';
 box.className = 'panel';
 document.body.appendChild(box);
-let st = null, open = false, timer = 0, busyAction = false;
+let st = null, open = false, timer = 0, busyAction = false, stale = false, lastSig = '';
 
 async function fetchState() {
   try { st = await (await fetch('/api/models')).json(); } catch { st = null; }
-  if (open && box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text' && document.activeElement.value !== document.activeElement.defaultValue) return; // don't overwrite what the user is typing
+  const ae = document.activeElement;
+  if (open && box.contains(ae) && ((ae.tagName === 'INPUT' && ae.type === 'text' && ae.value !== ae.defaultValue) || ae.tagName === 'SELECT')) { stale = true; return; } // don't rebuild under an open dropdown or text being typed
   render();
 }
 function schedule() {
@@ -30,7 +33,7 @@ function whisperRow(w) {
   let state;
   if (!w.available) state = '<span class="m-err">faster-whisper is not installed (uv sync)</span>';
   else if (w.loading) state = '<span class="m-busy"><i class="spin"></i>Loading into memory…</span>';
-  else if (w.loaded) state = `<b>In memory</b> · ${w.model} · ${w.device === 'cuda' ? 'GPU' : 'CPU'}${w.pinned ? '' : ' · unloads itself after ' + (IDLE[w.idle] || w.idle + ' min') + ' idle'}${w.model !== sel ? `<div class="m-hint">“${sel}” is selected in the list — it will load on the next transcription</div>` : ''}`;
+  else if (w.loaded) state = `<b>In memory</b> · ${w.model} · ${w.device === 'cuda' ? 'GPU' : 'CPU'}${w.pinned ? '' : idleTxt(w.idle)} ${unloadBtn('w-unload')}${w.model !== sel ? `<div class="m-hint">“${sel}” is selected in the list — it will load on the next transcription</div>` : ''}`;
   else state = 'Unloaded — uses no memory';
   if (w.error) state += `<div class="m-err">⚠ ${esc(w.error)}</div>`;
   return `<div class="mrow" data-m="whisper">
@@ -52,7 +55,7 @@ function llamaRow(v) {
   const bad = (f) => (v.problem && v.problem.field === f ? 'class="bad"' : '');
   let state;
   if (v.loading) state = '<span class="m-busy"><i class="spin"></i>llama-server is loading the model…</span><div class="m-hint">On the first run with a Hugging Face repo, the model is downloaded first</div>';
-  else if (v.loaded) state = `<b>In memory</b> · ${v.vram ? gb(v.vram) + ' VRAM' : 'llama-server is running'}${v.pinned ? '' : ' · unloads itself after ' + (v.idle ? (IDLE[v.idle] || v.idle + ' min') : 'never') + ' idle'}`;
+  else if (v.loaded) state = `<b>In memory</b> · ${v.vram ? gb(v.vram) + ' VRAM' : 'llama-server is running'}${v.pinned ? '' : idleTxt(v.idle)} ${v.busy ? '' : unloadBtn('v-unload')}`;
   else if (v.problem) state = `<span class="m-err">⚠ ${esc(v.problem.text)}</span>`;
   else state = 'Unloaded — uses no memory';
   if (v.error) state += `<div class="m-err">⚠ ${esc(v.error)}</div>${v.log && v.log.length ? `<pre class="m-log">${esc(v.log.join('\n'))}</pre>` : ''}`;
@@ -81,7 +84,7 @@ function vlRow(v) {
   } else if (!v.installed) state = `<span class="m-err">⚠ Model “${esc(v.model)}” is not downloaded.</span> <button class="chip-s go" data-a="v-pull">Download</button>${p?.error ? `<div class="m-err">⚠ ${esc(p.error)}</div>` : ''}`;
   else if (v.loaded) {
     const where = v.vram >= v.size * 0.95 ? 'GPU' : v.vram > 0 ? `partly on the GPU (${gb(v.vram)} of ${gb(v.size)})` : 'CPU (RAM)';
-    state = `<b>In memory</b> · ${gb(v.size)} · ${where}${v.pinned ? '' : ' · unloads itself after ' + (v.idle ? (IDLE[v.idle] || v.idle + ' min') : 'never') + ' idle'}`;
+    state = `<b>In memory</b> · ${gb(v.size)} · ${where}${v.pinned ? '' : idleTxt(v.idle)} ${v.busy ? '' : unloadBtn('v-unload')}`;
   } else state = 'Unloaded — uses no memory';
   if (v.error && v.reachable) state += `<div class="m-err">⚠ ${esc(v.error)}</div>`;
   const names = new Set(v.suggested.map((s) => s.name));
@@ -97,7 +100,11 @@ function vlRow(v) {
   </div>`;
 }
 
-function render() {
+function render(force) {
+  const sig = JSON.stringify([st, open, S.whisper.model]);
+  if (!force && sig === lastSig) return;
+  lastSig = sig;
+  stale = false;
   const any = st && (st.whisper.loaded || st.vl.loaded);
   const busy = st && (st.whisper.loading || st.vl.loading || (st.vl.pull && !st.vl.pull.done));
   const head = `<button class="tb mb-btn ${open ? 'on' : ''}" data-a="open" title="Models in memory: Whisper and text recognition">${I.chip}${dot(any, busy)}</button>`;
@@ -117,10 +124,13 @@ box.addEventListener('click', (e) => {
   if (e.target.closest('[data-a=open]')) { open = !open; render(); if (open) fetchState(); schedule(); return; }
   const a = e.target.closest('button[data-a]')?.dataset.a;
   if (a === 'v-pull') act('/api/models/vl', { action: 'pull' });
+  else if (a === 'w-unload') act('/api/models/whisper', { action: 'unload' }, 'Unloaded');
+  else if (a === 'v-unload') act('/api/models/vl', { action: 'unload' }, 'Unloaded');
   else if (a === 'v-cancelpull') act('/api/models/vl', { action: 'cancelpull' });
 });
 box.addEventListener('change', async (e) => {
   const a = e.target.dataset.a;
+  if (e.target.tagName === 'SELECT') e.target.blur();
   if (a === 'w-toggle') await act('/api/models/whisper', { action: e.target.checked ? 'load' : 'unload', model: S.whisper.model });
   else if (a === 'v-toggle') await act('/api/models/vl', { action: e.target.checked ? 'load' : 'unload' });
   else if (a === 'w-model') { S.whisper.model = e.target.value; savePrefs(); render(); }
@@ -137,6 +147,7 @@ box.addEventListener('change', async (e) => {
     await act('/api/models/settings', { vl_model: v });
   }
 });
+box.addEventListener('focusout', () => setTimeout(() => { if (stale && !box.contains(document.activeElement)) render(); }, 0));
 window.addEventListener('pointerdown', (e) => { if (open && !box.contains(e.target)) { open = false; render(); schedule(); } });
 bus.on('models-changed', () => { fetchState(); });
 bus.on('openmodels', () => { open = true; render(); fetchState(); schedule(); });

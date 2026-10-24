@@ -1,6 +1,7 @@
-import { S, bus, mark, commit, touch, dirty, $ } from './store.js';
+import { S, bus, mark, commit, touch, dirty, toast, $ } from './store.js';
 import { I } from './icons.js';
 import { createTranscript } from './transcript.js';
+import { fixWav } from './wav.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -28,7 +29,8 @@ async function computePeaks(url) {
     if (+r.headers.get('content-length') > 60e6) return null;
     const buf = await r.arrayBuffer();
     const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-    const ab = await new AC(1, 44100, 44100).decodeAudioData(buf);
+    const dec = (b) => new AC(1, 44100, 44100).decodeAudioData(b);
+    const ab = await dec(buf.slice(0)).catch(async () => (url.endsWith('.wav') ? dec(await (await fetch(await fixWav(url))).arrayBuffer()) : Promise.reject()));
     const N = 600, peaks = new Array(N).fill(0), len = ab.length, per = len / N;
     for (let c = 0; c < ab.numberOfChannels; c++) {
       const d = ab.getChannelData(c);
@@ -80,6 +82,20 @@ export function createMedia(kind, item0) {
   const pp = q('.pp'), track = q('.track'), wave = q('.wave'), rng = q('.rng'), fill = q('.fill');
   const hs = q('.hs'), he = q('.he'), ph = q('.ph'), tm = q('.tm');
   const inS = q('.ts'), inE = q('.te'), mute = q('.mute'), vol = q('.vol');
+
+  let srcFor = null, wavTimer = 0;
+  // Firefox rejects some WAV encodings (or never reports a length): re-encode to 16-bit PCM and play that copy
+  function watchWav(u) {
+    clearTimeout(wavTimer);
+    if (kind !== 'audio' || !u.endsWith('.wav')) return;
+    const fix = async () => {
+      if (srcFor !== u || m.dataset.fixed === u) return;
+      m.dataset.fixed = u;
+      try { m.src = await fixWav(u); } catch (e) { toast('Cannot play this WAV: ' + e.message, 5000); }
+    };
+    m.onerror = fix;
+    wavTimer = setTimeout(() => { if (!(m.duration > 0)) fix(); }, 2500);
+  }
 
   let override = false; // Transcript-click playback may leave the selected range
   const seekPlay = (t) => {
@@ -144,7 +160,7 @@ export function createMedia(kind, item0) {
   m.addEventListener('timeupdate', () => { if (m.paused) update(); });
   m.addEventListener('ended', () => { override = false; m.currentTime = S0(); update(); });
   m.addEventListener('loadedmetadata', () => {
-    dur = m.duration || 0;
+    dur = isFinite(m.duration) ? m.duration : 0;
     if (kind === 'video' && m.videoWidth && !it.ar) {
       it.ar = m.videoWidth / m.videoHeight;
       dirty();
@@ -255,7 +271,7 @@ export function createMedia(kind, item0) {
       editing = isEditing;
       root.classList.toggle('editing', editing);
       const u = /^\/assets\/[0-9a-f]{24}(\.[a-z0-9]{1,8})?$/.test(it.url || '') ? it.url : '';
-      if (m.getAttribute('src') !== u) { m.src = u; }
+      if (srcFor !== u) { srcFor = u; m.src = u; watchWav(u); }
       if (kind === 'video') q('.mv').style.aspectRatio = it.ar || '16 / 9';
       else q('.mt span').textContent = it.name || 'Audio';
       trn.render(it);

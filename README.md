@@ -1,4 +1,4 @@
-# Easy Board
+# Board
 
 A local infinite whiteboard: drawing, notes, Markdown, code with syntax highlighting, images (including from the clipboard), PDF, audio and video, and connections between cards.
 Everything is stored on your disk in the `data/` folder (no cloud; the server listens on `127.0.0.1` only).
@@ -9,7 +9,7 @@ Everything is stored on your disk in the `data/` folder (no cloud; the server li
 uv run main.py
 ```
 
-or double-click `start.bat`. A browser opens at http://localhost:8765/.
+or double-click `start.bat` (Windows) / run `./start.sh` (Linux, macOS; if needed `chmod +x start.sh` first). A browser opens at http://localhost:8765/
 Options: `--port 9000`, `--data D:\boards\work` (a different data folder), `--no-browser`.
 Only uv is required: it installs Python and the dependencies itself (on first run `faster-whisper` ≈ 200 MB is downloaded — that is for transcription). The JS libraries (marked, DOMPurify, highlight.js) live in `web/vendor/`.
 More options: `--device cpu` (transcribe on the CPU only), `--gc` (delete files that no project references, then exit).

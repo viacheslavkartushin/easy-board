@@ -7,7 +7,7 @@ export const S = {
   pen: { color: 'auto', size: 4, alpha: 1 },
   eraser: { size: 28, whole: false },
   link: { color: 'auto', width: 2, arrow: true, dashed: false },
-  ui: { theme: 'light', inkAbove: true, wheel: 'zoom', grid: false, minimap: true },
+  ui: { theme: 'dark', inkAbove: true, wheel: 'zoom', grid: false, minimap: true },
   filter: null,
   whisper: { model: 'small', lang: '' },
   project: { id: null, name: '' },
